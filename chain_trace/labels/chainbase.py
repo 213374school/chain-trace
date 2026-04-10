@@ -10,12 +10,12 @@ from typing import Optional
 
 from chain_trace.db.cache import cached_get
 
-CHAINBASE_BASE = "https://api.chainbase.com/v1"
+CHAINBASE_BASE = "https://api.chainbase.online/v1"
 
-# Chainbase numeric chain IDs for chains this tool supports
+# Chainbase numeric chain IDs for chains this tool supports.
+# Note: the /address/labels endpoint is ETH-only; Bitcoin is not supported.
 _CHAIN_IDS: dict[str, int] = {
     "eth": 1,
-    # Bitcoin is not supported by the Chainbase address-labels endpoint
 }
 
 # Keywords inside Chainbase label strings → internal category names
@@ -60,8 +60,11 @@ def fetch_label(
     if chain_id is None:
         return None
 
-    endpoint = f"{CHAINBASE_BASE}/account/labels"
-    params: dict = {"chain_id": chain_id, "address": address.lower()}
+    endpoint = f"{CHAINBASE_BASE}/address/labels"
+    # ETH addresses are case-insensitive (normalise to lowercase);
+    # BTC addresses are case-sensitive and must be passed as-is.
+    normalised = address.lower() if chain == "eth" else address
+    params: dict = {"chain_id": chain_id, "address": normalised}
 
     def _do_request():
         resp = requests.get(
@@ -81,19 +84,32 @@ def fetch_label(
     if not data or data.get("code") != 0:
         return None
 
-    raw = data.get("data") or []
-    if not raw:
+    # Response: {"data": {"0xaddress": [{"category": "...", "tags": [...]}, ...]}}
+    raw = data.get("data") or {}
+    if not isinstance(raw, dict) or not raw:
         return None
 
-    # Chainbase returns a list of label strings; the first is the entity name
-    if not isinstance(raw, list):
-        return None
-    labels = [str(l).strip() for l in raw if l]
-    if not labels:
+    # Address key may differ in case — find it case-insensitively
+    entries = next(iter(raw.values()), [])
+    if not entries:
         return None
 
-    name = labels[0]
-    category = _infer_category(labels)
+    # Collect all tags across all label entries
+    all_tags: list[str] = []
+    for entry in entries:
+        all_tags.extend(entry.get("tags") or [])
+
+    if not all_tags:
+        return None
+
+    # Prefer "institution" category tags as the canonical name
+    institution_tags: list[str] = []
+    for entry in entries:
+        if entry.get("category") == "institution":
+            institution_tags.extend(entry.get("tags") or [])
+
+    name = institution_tags[0] if institution_tags else all_tags[0]
+    category = _infer_category(all_tags)
     return {"name": name, "category": category}
 
 
