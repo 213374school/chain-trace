@@ -36,6 +36,19 @@ trace config set etherscan_key YOUR_KEY
 
 Bitcoin tracing works without any key.
 
+### Chainbase API key (optional — enriches address labels)
+
+Get a free key at [chainbase.com](https://chainbase.com), then:
+
+```bash
+trace config set chainbase_key YOUR_KEY
+```
+
+When set, any Ethereum address without a local or catalog label is automatically
+looked up via the Chainbase Web3 Data API. Results are cached locally so
+subsequent lookups are instant and offline. Labels are stored with
+`source=chainbase` and are visible in `trace label list --source chainbase`.
+
 ## Usage
 
 ### Trace an address
@@ -68,7 +81,13 @@ trace label add 0xABCD... "My cold wallet" --chain eth
 trace label add 1BTC...   "Exchange deposit" --chain btc
 trace label list
 trace label list --chain eth --category exchange
+trace label list --source chainbase           # labels fetched from Chainbase
 trace label remove 0xABCD... --chain eth
+
+# On-demand Chainbase lookup (requires chainbase_key to be configured)
+trace label lookup 0xABCD...                  # check local DB then Chainbase
+trace label lookup 0xABCD... --save           # persist result locally
+trace label lookup 0xABCD... --json           # machine-readable
 ```
 
 ### Investigation sessions
@@ -201,8 +220,9 @@ All data is stored locally in `~/.chain-trace/data.db` (SQLite). Nothing is sent
 
 ## APIs used
 
-| Chain | API | Key required |
-|-------|-----|-------------|
-| Bitcoin | [mempool.space](https://mempool.space/docs/api) | No |
-| Ethereum | [Etherscan V2](https://docs.etherscan.io) | Yes (free) |
-| Prices | [CoinGecko](https://www.coingecko.com/en/api) | No |
+| Purpose | API | Key required |
+|---------|-----|-------------|
+| Bitcoin data | [mempool.space](https://mempool.space/docs/api) | No |
+| Ethereum data | [Etherscan V2](https://docs.etherscan.io) | Yes (free) |
+| Historical prices | [CoinGecko](https://www.coingecko.com/en/api) | No |
+| Address labels | [Chainbase](https://docs.chainbase.com) | Yes (free) |

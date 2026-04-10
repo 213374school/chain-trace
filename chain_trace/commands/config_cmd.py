@@ -5,7 +5,7 @@ from rich.table import Table
 
 console = Console()
 
-_SENSITIVE = {"etherscan_key"}
+_SENSITIVE = {"etherscan_key", "chainbase_key"}
 
 
 @click.group("config")

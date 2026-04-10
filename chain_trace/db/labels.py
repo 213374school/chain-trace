@@ -80,3 +80,42 @@ def list_labels(
         params.append(source)
     query += " ORDER BY chain, name"
     return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def resolve_label(
+    conn: sqlite3.Connection,
+    address: str,
+    chain: str,
+) -> Optional[dict]:
+    """Resolve a label for an address: local DB first, Chainbase API as fallback.
+
+    If Chainbase returns a result it is persisted to the ``labels`` table with
+    ``source='chainbase'`` so subsequent calls are served locally without
+    another network round-trip.
+
+    Chainbase lookup is skipped when ``chainbase_key`` is not configured.
+    """
+    result = get_label(conn, address, chain)
+    if result:
+        return result
+
+    row = conn.execute(
+        "SELECT value FROM config WHERE key = 'chainbase_key'"
+    ).fetchone()
+    api_key = row["value"] if row else ""
+    if not api_key:
+        return None
+
+    from chain_trace.labels.chainbase import fetch_label
+    fetched = fetch_label(conn, address, chain, api_key)
+    if fetched:
+        set_label(
+            conn,
+            address,
+            fetched["name"],
+            chain=chain,
+            category=fetched.get("category"),
+            source="chainbase",
+        )
+        return fetched
+    return None

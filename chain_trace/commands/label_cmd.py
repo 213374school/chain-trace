@@ -4,7 +4,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from chain_trace.db.labels import get_label, set_label, remove_label, list_labels
+from chain_trace.db.labels import get_label, set_label, remove_label, list_labels, resolve_label
 
 console = Console()
 
@@ -83,3 +83,81 @@ def label_list(ctx, chain, category, source, as_json):
 
     console.print(f"  {len(labels)} labels")
     console.print(table)
+
+
+@label_cmd.command("lookup")
+@click.argument("address")
+@click.option("--chain", type=click.Choice(["eth"]), default="eth", show_default=True,
+              help="Chain to query (only 'eth' is supported by Chainbase address labels)")
+@click.option("--save", is_flag=True,
+              help="Persist the result to the local label database")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def label_lookup(ctx, address, chain, save, as_json):
+    """Look up an address label via Chainbase API.
+
+    Checks the local database first; if no label is found it queries Chainbase.
+    Use --save to store the result locally for future offline lookups.
+
+    Requires a Chainbase API key:
+      trace config set chainbase_key YOUR_KEY
+    """
+    conn = ctx.obj["db"]
+
+    # Check key early to give a helpful error before hitting the network
+    row = conn.execute(
+        "SELECT value FROM config WHERE key = 'chainbase_key'"
+    ).fetchone()
+    api_key = row["value"] if row else ""
+    if not api_key:
+        console.print(
+            "[red]Chainbase API key not configured.[/red]\n"
+            "Run:  trace config set chainbase_key YOUR_KEY\n"
+            "Get a free key at https://chainbase.com"
+        )
+        raise SystemExit(1)
+
+    # Local check first (avoids a network call when already labelled)
+    local = get_label(conn, address, chain)
+    if local:
+        result = local
+        source_note = local.get("source", "local")
+    else:
+        from chain_trace.labels.chainbase import fetch_label
+        fetched = fetch_label(conn, address, chain, api_key)
+        result = fetched
+        source_note = "chainbase"
+
+        if fetched and save:
+            set_label(
+                conn,
+                address,
+                fetched["name"],
+                chain=chain,
+                category=fetched.get("category"),
+                source="chainbase",
+            )
+
+    if as_json:
+        payload = {
+            "address": address,
+            "chain": chain,
+            "label": result,
+            "source": source_note if result else None,
+        }
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    if not result:
+        console.print(
+            f"[yellow]No label found for [cyan]{address}[/cyan] on {chain}[/yellow]"
+        )
+        return
+
+    console.print(f"[cyan]{address}[/cyan]  ({chain})")
+    console.print(f"  Name:     [bold]{result['name']}[/bold]")
+    if result.get("category"):
+        console.print(f"  Category: {result['category']}")
+    console.print(f"  Source:   {source_note}")
+    if save and source_note == "chainbase" and not local:
+        console.print("  [green]✓ Saved to local database[/green]")
