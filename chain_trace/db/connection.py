@@ -9,6 +9,7 @@ _CONFIG_DEFAULTS = [
     ("dust_threshold_eth",    "0.0001"),
     ("high_traffic_threshold","10000"),
     ("etherscan_key",         ""),
+    ("chainbase_key",         ""),
 ]
 
 

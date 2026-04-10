@@ -6,7 +6,7 @@ from datetime import datetime
 from dateutil import parser as dateparser
 
 from chain_trace.models import Chain
-from chain_trace.db.labels import get_label
+from chain_trace.db.labels import resolve_label
 from chain_trace.catalog.loader import get_dex_routers
 
 
@@ -27,9 +27,9 @@ def _parse_date(s: str) -> datetime:
 
 
 def _label_fn(conn):
-    """Returns a closure that looks up labels for display."""
+    """Returns a closure that resolves labels (local DB, then Chainbase fallback)."""
     def fn(address: str, chain: str) -> str | None:
-        result = get_label(conn, address, chain)
+        result = resolve_label(conn, address, chain)
         return result["name"] if result else None
     return fn
 
